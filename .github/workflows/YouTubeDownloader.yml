@@ -437,14 +437,35 @@ jobs:
           
           PYEOF
 
-      - name: 📤 Push Files
+      - name: 📤 Push Files (Verbose)
         run: |
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "📤 PUSHING TO GITHUB"
+          echo "📤 PUSHING TO GITHUB (VERBOSE)"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           
           git config user.name "github-actions[bot]"
           git config user.email "bot@github.com"
+          
+          # Show current remote URL
+          echo ""
+          echo "🔍 Current remote URL:"
+          git remote -v
+          
+          # Fix remote URL to match current repo name
+          echo ""
+          echo "🔧 Setting remote URL to:"
+          echo "   https://github.com/${{ github.repository }}.git"
+          git remote set-url origin "https://github.com/${{ github.repository }}.git"
+          
+          # Show current branch
+          echo ""
+          echo "🌿 Current branch:"
+          git branch
+          
+          # Ensure we're on main branch
+          echo ""
+          echo "🔄 Switching to main branch..."
+          git checkout main || git checkout -b main
           
           echo ""
           echo "📋 Adding all files..."
@@ -463,20 +484,25 @@ jobs:
           done
           
           echo ""
-          echo "📤 Pushing..."
+          echo "📤 Pushing... (WITHOUT --quiet to see errors)"
           
-          git commit -m "📦 $(date +%m%d-%H%M) [skip ci]" --quiet
+          git commit -m "📦 $(date +%m%d-%H%M) [skip ci]"
           
           for i in 1 2 3 4 5; do
-            echo -n "   🚀 Attempt $i/5..."
-            if git pull --rebase --quiet 2>/dev/null && git push --quiet 2>/dev/null; then
-              echo " ✅ DONE!"
+            echo ""
+            echo "   🚀 Attempt $i/5..."
+            
+            # REMOVED --quiet so we can see the REAL error
+            if git pull --rebase origin main 2>&1 && git push origin main 2>&1; then
+              echo "   ✅ DONE!"
               exit 0
             fi
-            echo " ❌"
+            
+            PUSH_EXIT=$?
+            echo "   ❌ Failed with exit code: $PUSH_EXIT"
             git rebase --abort 2>/dev/null
-            [ $i -lt 5 ] && sleep $((i*5))
+            [ $i -lt 5 ] && echo "   ⏳ Waiting $((i*5)) seconds before retry..." && sleep $((i*5))
           done
           
-          echo "   ❌ Push failed"
+          echo "   ❌ Push failed after 5 attempts"
           exit 1
