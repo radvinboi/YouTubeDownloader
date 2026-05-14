@@ -446,6 +446,13 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "bot@github.com"
           
+          # ========== FIXES FOR HTTP 500 ERROR ==========
+          echo ""
+          echo "🔧 Configuring git for reliable push..."
+          git config http.version HTTP/1.1          # Avoid HTTP/2 issues
+          git config http.postBuffer 134217728      # 128MB buffer
+          # ==============================================
+          
           # Show current remote URL
           echo ""
           echo "🔍 Current remote URL:"
@@ -484,25 +491,38 @@ jobs:
           done
           
           echo ""
-          echo "📤 Pushing... (WITHOUT --quiet to see errors)"
+          echo "📤 Committing and pushing..."
           
           git commit -m "📦 $(date +%m%d-%H%M) [skip ci]"
+          
+          # Initial delay to avoid race conditions
+          sleep 5
           
           for i in 1 2 3 4 5; do
             echo ""
             echo "   🚀 Attempt $i/5..."
             
-            # REMOVED --quiet so we can see the REAL error
-            if git pull --rebase origin main 2>&1 && git push origin main 2>&1; then
-              echo "   ✅ DONE!"
+            # Try push with force-with-lease for reliability
+            if git pull --rebase origin main 2>&1 && git push --force-with-lease origin main 2>&1; then
+              echo "   ✅ PUSH SUCCESSFUL!"
               exit 0
             fi
             
             PUSH_EXIT=$?
             echo "   ❌ Failed with exit code: $PUSH_EXIT"
             git rebase --abort 2>/dev/null
-            [ $i -lt 5 ] && echo "   ⏳ Waiting $((i*5)) seconds before retry..." && sleep $((i*5))
+            
+            if [ $i -lt 5 ]; then
+              WAIT=$((i * 10))
+              echo "   ⏳ Waiting $WAIT seconds before retry..."
+              sleep $WAIT
+            fi
           done
           
           echo "   ❌ Push failed after 5 attempts"
+          echo ""
+          echo "🔍 Debug info:"
+          echo "   Total files: $TOTAL"
+          echo "   Remote: $(git remote get-url origin)"
+          git rev-parse HEAD
           exit 1
